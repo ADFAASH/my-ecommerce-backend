@@ -23,16 +23,19 @@ const validateProductInput = (data, isNew = true) => {
             errors.push('Category is required and must be a non-empty string.');
         }
     }
+    // Updated validation for 'price': now derived from calculatedPrices and still required.
+    // If it's a new product or price is explicitly provided for update, validate it.
     if (isNew || data.price !== undefined) {
         if (typeof data.price !== 'number' || data.price < 0) {
-            errors.push('Price is required and must be a non-negative number.');
+            errors.push('Price (smallest size price) is required and must be a non-negative number.');
         }
     }
-    if (isNew || data.pricePer10Ml !== undefined) {
-        if (typeof data.pricePer10Ml !== 'number' || data.pricePer10Ml < 0) {
-            errors.push('Price Per 10ML is required and must be a non-negative number.');
-        }
-    }
+    // REMOVED pricePer10Ml validation:
+    // if (isNew || data.pricePer10Ml !== undefined) {
+    //     if (typeof data.pricePer10Ml !== 'number' || data.pricePer10Ml < 0) {
+    //         errors.push('Price Per 10ML is required and must be a non-negative number.');
+    //     }
+    // }
     if (data.reviews !== undefined && (typeof data.reviews !== 'number' || data.reviews < 0)) {
         errors.push('Reviews must be a non-negative number.');
     }
@@ -66,9 +69,23 @@ const validateProductInput = (data, isNew = true) => {
     }
 
     // Validate calculatedPrices and sizeStocks (as mixed types, check for object structure)
-    if (data.calculatedPrices !== undefined && (typeof data.calculatedPrices !== 'object' || data.calculatedPrices === null)) {
-        errors.push('Calculated prices must be an object.');
+    // For a new product, calculatedPrices must be provided and have at least one valid price.
+    if (isNew || data.calculatedPrices !== undefined) { // Check if it's new or the field is provided for update
+        if (typeof data.calculatedPrices !== 'object' || data.calculatedPrices === null) {
+            errors.push('Calculated prices must be an object.');
+        } else {
+            const hasAtLeastOnePrice = Object.values(data.calculatedPrices).some(price => typeof price === 'number' && price > 0);
+            if (isNew && !hasAtLeastOnePrice) { // For new products, at least one price must be positive
+                errors.push('At least one calculated price must be a positive number for new products.');
+            }
+            for (const size in data.calculatedPrices) {
+                if (typeof data.calculatedPrices[size] !== 'number' || data.calculatedPrices[size] < 0) {
+                    errors.push(`Price for size "${size}" must be a non-negative number.`);
+                }
+            }
+        }
     }
+
     if (data.sizeStocks !== undefined && (typeof data.sizeStocks !== 'object' || data.sizeStocks === null)) {
         errors.push('Size stocks must be an object.');
     } else if (data.sizeStocks !== undefined) {
@@ -85,7 +102,6 @@ const validateProductInput = (data, isNew = true) => {
     if (data.isVisibleInCollection !== undefined && typeof data.isVisibleInCollection !== 'boolean') {
         errors.push('isVisibleInCollection must be a boolean.');
     }
-
 
     return errors;
 };
