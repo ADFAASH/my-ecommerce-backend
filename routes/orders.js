@@ -79,10 +79,15 @@ router.get('/:id', async (req, res) => {
 
 // POST a new order
 router.post('/', async (req, res) => {
+  console.log('!!!!!!! DEBUG: Order POST route was hit !!!!!!!'); // DEBUG LOG
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
+    console.log('Backend: Order POST request received.'); // DEBUG LOG
+    console.log('Backend: Request Body:', JSON.stringify(req.body, null, 2)); // DEBUG LOG
+
     const validationErrors = validateOrderInput(req.body);
     if (validationErrors.length > 0) {
         throw new Error(validationErrors.join(', '));
@@ -96,48 +101,64 @@ router.post('/', async (req, res) => {
 
     const newOrder = new Order(req.body);
     const savedOrder = await newOrder.save({ session });
+    console.log('Backend: New order saved with ID:', savedOrder._id); // DEBUG LOG
 
     // Deduct stock for each item in the order
     for (const item of req.body.items) {
+      console.log(`Backend: Processing item ${item.name} (${item.size}) with ID ${item.id}`); // DEBUG LOG
       const product = await Product.findById(item.id).session(session);
 
       if (!product) {
+        console.error(`Backend: Product not found for ID ${item.id}.`); // DEBUG LOG
         throw new Error(`Product with ID ${item.id} not found.`);
       }
 
       const requestedQuantity = item.quantity;
-      const currentStock = product.sizeStocks.get(item.size); // Use .get() for Map-like access
+      // Use bracket notation for reading stock (Fix for .get() error)
+      const currentStock = product.sizeStocks[item.size];
+
+      console.log(`Backend: Product "${product.name}" (ID: ${product._id}) - Current stock for ${item.size}: ${currentStock}, Requested: ${requestedQuantity}`); // DEBUG LOG
 
       if (currentStock === undefined || currentStock < requestedQuantity) {
+        console.error(`Backend: Insufficient stock for ${product.name} (${item.size}).`); // DEBUG LOG
         throw new Error(`Insufficient stock for product "${product.name}" (Size: ${item.size}). Available: ${currentStock || 0}, Requested: ${requestedQuantity}.`);
       }
 
-      // Deduct stock
-      product.sizeStocks.set(item.size, currentStock - requestedQuantity); // Use .set() to update
+      // Use assignment for deducting stock (Fix for .set() error)
+      product.sizeStocks[item.size] = currentStock - requestedQuantity;
 
-      // Update overall inStock status based on new sizeStocks
+      // --- ADDED FIX: Mark sizeStocks as modified for Mongoose Mixed type ---
+      product.markModified('sizeStocks'); // <-- Crucial for Mongoose to detect nested changes
+      console.log('Backend: sizeStocks marked as modified.'); // DEBUG LOG
+      // --- END ADDED FIX ---
+
+      // Update overall inStock status based on new sizeStocks (Fix for .values() error)
       let overallInStock = false;
-      for (const stock of product.sizeStocks.values()) {
+      for (const stock of Object.values(product.sizeStocks)) { // Use Object.values()
           if (stock > 0) {
               overallInStock = true;
               break;
           }
       }
       product.inStock = overallInStock;
+      console.log(`Backend: Overall inStock for ${product.name} set to: ${product.inStock}`); // DEBUG LOG
 
       await product.save({ session });
+      console.log(`Backend: Product ${product.name} (ID: ${product._id}) saved after stock update.`); // DEBUG LOG
     }
 
     await session.commitTransaction();
+    console.log('Backend: Transaction committed successfully!'); // DEBUG LOG
     res.status(201).json(savedOrder);
 
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    console.error('Order creation failed:', err.message);
+    console.error('Backend: Order creation failed and transaction aborted:', err.message); // DEBUG LOG
     res.status(400).json({ error: 'Failed to create order', details: err.message });
   } finally {
     session.endSession();
+    console.log('Backend: Session ended.'); // DEBUG LOG
   }
 });
 
