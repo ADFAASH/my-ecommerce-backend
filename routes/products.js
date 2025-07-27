@@ -1,4 +1,3 @@
-// LastV2Gemini/backend/routes/products.js
 import express from 'express';
 import Product from '../models/Product.js';
 import mongoose from 'mongoose'; // Import mongoose to use isValidObjectId
