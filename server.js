@@ -4,6 +4,7 @@ import cors from 'cors';
 import productRoutes from './routes/products.js';
 import orderRoutes from './routes/orders.js';
 import 'dotenv/config'; // Correct way to load .env variables in ES Modules
+import userRoutes from './routes/users.js'; 
 
 const app = express();
 app.use(cors());
@@ -14,6 +15,9 @@ app.get('/test-server', (req, res) => {
 
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
+
+// --- ADD new users route ---
+app.use('/api/users', userRoutes); 
 
 // Connect to MongoDB Atlas using the environment variable
 mongoose.connect(process.env.MONGODB_URI, {
