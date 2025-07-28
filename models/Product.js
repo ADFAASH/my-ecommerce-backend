@@ -4,7 +4,6 @@ const productSchema = new mongoose.Schema({
   name: { type: String, required: true },
   category: { type: String, required: true },
   price: { type: Number, required: true }, // This will now represent the main display price (e.g., smallest size price)
-  // pricePer10Ml: { type: Number, required: true }, // REMOVED THIS LINE
   calculatedPrices: { type: mongoose.Schema.Types.Mixed, default: {} }, // Stores { '30ml': 50, '50ml': 80 }
   sizeStocks: { type: mongoose.Schema.Types.Mixed, default: {} }, // Stores { '30ml': 100, '50ml': 50 }
   inStock: { type: Boolean, default: true }, // Derived status, can be updated based on sizeStocks

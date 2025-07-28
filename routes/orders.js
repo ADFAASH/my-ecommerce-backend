@@ -79,10 +79,15 @@ router.get('/:id', async (req, res) => {
 
 // POST a new order
 router.post('/', async (req, res) => {
+  console.log('!!!!!!! DEBUG: Order POST route was hit !!!!!!!'); // DEBUG LOG
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
+    console.log('Backend: Order POST request received.'); // DEBUG LOG
+    console.log('Backend: Request Body:', JSON.stringify(req.body, null, 2)); // DEBUG LOG
+
     const validationErrors = validateOrderInput(req.body);
     if (validationErrors.length > 0) {
         throw new Error(validationErrors.join(', '));
@@ -96,66 +101,64 @@ router.post('/', async (req, res) => {
 
     const newOrder = new Order(req.body);
     const savedOrder = await newOrder.save({ session });
+    console.log('Backend: New order saved with ID:', savedOrder._id); // DEBUG LOG
 
     // Deduct stock for each item in the order
     for (const item of req.body.items) {
+      console.log(`Backend: Processing item ${item.name} (${item.size}) with ID ${item.id}`); // DEBUG LOG
       const product = await Product.findById(item.id).session(session);
 
       if (!product) {
-        console.error(`Product with ID ${item.id} not found.`); // DEBUG LOG
+        console.error(`Backend: Product not found for ID ${item.id}.`); // DEBUG LOG
         throw new Error(`Product with ID ${item.id} not found.`);
       }
 
       const requestedQuantity = item.quantity;
-      console.log(`--- Processing Item ---`); // DEBUG LOG
-      console.log(`Product ID: ${item.id}`); // DEBUG LOG
-      console.log(`Item Name: ${item.name}`); // DEBUG LOG
-      console.log(`Item Size: ${item.size}`); // DEBUG LOG
-      console.log(`Requested Quantity: ${requestedQuantity}`); // DEBUG LOG
-      console.log(`Product Name: ${product.name}`); // DEBUG LOG
-      console.log(`Current sizeStocks (BEFORE deduction):`, product.sizeStocks); // DEBUG LOG
-      
-      // Corrected: Use bracket notation for Mixed type object
-      const currentStock = product.sizeStocks[item.size]; 
-      console.log(`Current Stock for ${item.size}: ${currentStock}`); // DEBUG LOG
+      // Use bracket notation for reading stock (Fix for .get() error)
+      const currentStock = product.sizeStocks[item.size];
+
+      console.log(`Backend: Product "${product.name}" (ID: ${product._id}) - Current stock for ${item.size}: ${currentStock}, Requested: ${requestedQuantity}`); // DEBUG LOG
 
       if (currentStock === undefined || currentStock < requestedQuantity) {
-        console.error(`Insufficient stock for product "${product.name}" (Size: ${item.size}). Available: ${currentStock || 0}, Requested: ${requestedQuantity}.`); // DEBUG LOG
+        console.error(`Backend: Insufficient stock for ${product.name} (${item.size}).`); // DEBUG LOG
         throw new Error(`Insufficient stock for product "${product.name}" (Size: ${item.size}). Available: ${currentStock || 0}, Requested: ${requestedQuantity}.`);
       }
 
-      // Deduct stock (Corrected: Use bracket notation for Mixed type object)
-      product.sizeStocks[item.size] = currentStock - requestedQuantity; 
-      product.markModified('sizeStocks'); // Mark the mixed type field as modified
-      console.log(`Updated sizeStocks (AFTER deduction):`, product.sizeStocks); // DEBUG LOG
+      // Use assignment for deducting stock (Fix for .set() error)
+      product.sizeStocks[item.size] = currentStock - requestedQuantity;
 
-      // Update overall inStock status based on new sizeStocks
+      // --- ADDED FIX: Mark sizeStocks as modified for Mongoose Mixed type ---
+      product.markModified('sizeStocks'); // <-- Crucial for Mongoose to detect nested changes
+      console.log('Backend: sizeStocks marked as modified.'); // DEBUG LOG
+      // --- END ADDED FIX ---
+
+      // Update overall inStock status based on new sizeStocks (Fix for .values() error)
       let overallInStock = false;
-      // Iterate over values of the plain object
-      for (const sizeKey in product.sizeStocks) {
-          if (product.sizeStocks[sizeKey] > 0) {
+      for (const stock of Object.values(product.sizeStocks)) { // Use Object.values()
+          if (stock > 0) {
               overallInStock = true;
               break;
           }
       }
       product.inStock = overallInStock;
-      console.log(`Product inStock status: ${product.inStock}`); // DEBUG LOG
+      console.log(`Backend: Overall inStock for ${product.name} set to: ${product.inStock}`); // DEBUG LOG
 
       await product.save({ session });
-      console.log(`Product ${product.name} saved successfully.`); // DEBUG LOG
+      console.log(`Backend: Product ${product.name} (ID: ${product._id}) saved after stock update.`); // DEBUG LOG
     }
 
     await session.commitTransaction();
-    console.log('Transaction committed successfully.'); // DEBUG LOG
+    console.log('Backend: Transaction committed successfully!'); // DEBUG LOG
     res.status(201).json(savedOrder);
 
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    console.error('Order creation failed:', err.message);
+    console.error('Backend: Order creation failed and transaction aborted:', err.message); // DEBUG LOG
     res.status(400).json({ error: 'Failed to create order', details: err.message });
   } finally {
     session.endSession();
+    console.log('Backend: Session ended.'); // DEBUG LOG
   }
 });
 
